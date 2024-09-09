@@ -1,0 +1,97 @@
+# This docker-compose is only to get started with Conduktor.
+# It is starting Conduktor, a Redpanda cluster (Kafka), and a fake app to generate traffic.
+
+# Go to http://localhost:8080 when started
+
+####################################################################################################
+# DO NOT USE IT IN PRODUCTION
+#
+# For production, please check: https://docs.conduktor.io/platform/category/deployment-options/
+#   to deploy on Kubernetes via Helm, or AWS using Cloudformation.
+####################################################################################################
+
+
+services:  
+
+  # Conduktor Console, the enterprise UI.
+  # It depends on PostgreSQL. Here, we depend on Redpanda only for our get-started.
+  # https://docs.conduktor.io/platform/get-started/configuration/introduction/
+  conduktor-console:
+    image: conduktor/conduktor-console:1.26.0
+    depends_on:
+      - postgresql
+    ports:
+      - "8080:8080"
+    networks:
+      - kafkanet
+    environment:
+      CDK_DATABASE_URL: "postgresql://conduktor:change_me@postgresql:5432/conduktor-console"
+      CDK_CLUSTERS_0_ID: "local-kafka"
+      CDK_CLUSTERS_0_NAME: "local-kafka"
+      CDK_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-0:29092"
+      # CDK_CLUSTERS_0_SCHEMAREGISTRY_URL: "http://redpanda-0:18081"
+      CDK_CLUSTERS_0_COLOR: "#6A57C8"
+      CDK_CLUSTERS_0_ICON: "kafka"
+      CDK_CLUSTERS_1_ID: "cdk-gateway"
+      CDK_CLUSTERS_1_NAME: "cdk-gateway"
+      CDK_CLUSTERS_1_BOOTSTRAPSERVERS: "conduktor-gateway:6969"
+      # CDK_CLUSTERS_1_SCHEMAREGISTRY_URL: "http://redpanda-0:18081"
+      CDK_CLUSTERS_1_KAFKAFLAVOR_URL: "http://conduktor-gateway:8888"
+      CDK_CLUSTERS_1_KAFKAFLAVOR_USER: "admin"
+      CDK_CLUSTERS_1_KAFKAFLAVOR_PASSWORD: "admin"
+      CDK_CLUSTERS_1_KAFKAFLAVOR_VIRTUALCLUSTER: "passthrough"
+      CDK_CLUSTERS_1_KAFKAFLAVOR_TYPE: "Gateway"
+      CDK_CLUSTERS_1_COLOR: "#6A57C8"
+      CDK_CLUSTERS_1_ICON: "dog"
+      CDK_MONITORING_CORTEX-URL: http://conduktor-monitoring:9009/
+      CDK_MONITORING_ALERT-MANAGER-URL: http://conduktor-monitoring:9010/
+      CDK_MONITORING_CALLBACK-URL: http://conduktor-console:8080/monitoring/api/
+      CDK_MONITORING_NOTIFICATIONS-CALLBACK-URL: http://localhost:8080
+      
+  # Conduktor stores its metadata in PostgreSQL.
+  # Consider using an external managed database for production usage.
+  # https://docs.conduktor.io/platform/get-started/configuration/database/
+  postgresql:
+    image: postgres:14
+    hostname: postgresql
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - kafkanet
+    environment:
+      PGDATA: "/var/lib/postgresql/data"
+      POSTGRES_DB: "conduktor-console"
+      POSTGRES_USER: "conduktor"
+      POSTGRES_PASSWORD: "change_me"
+      POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
+
+  # Conduktor uses Cortex to store Kafka and applications metrics as well as alerting.
+  # It is optional. 
+  # https://docs.conduktor.io/platform/get-started/configuration/cortex/
+  conduktor-monitoring:
+    image: conduktor/conduktor-console-cortex:1.26.0
+    networks:
+      - kafkanet
+    environment:
+      CDK_CONSOLE-URL: "http://conduktor-console:8080"
+
+  # Conduktor comes with its Gateway, a Kafka proxy bringing many security and governance features.
+  # In this get started, Gateway uses Redpanda as its backend Kafka cluster.
+  # https://docs.conduktor.io/gateway/
+  conduktor-gateway:
+    image: conduktor/conduktor-gateway:3.2.0
+    hostname: conduktor-gateway
+    container_name: conduktor-gateway
+    networks:
+      - kafkanet
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka-0:29092
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: curl localhost:8888/health
+      interval: 5s
+      retries: 25
+
+volumes:
+  pg_data: {}
